@@ -8,6 +8,14 @@
 #include <errno.h>
 #include <string.h>
 
+//struct storing information for threads
+typedef struct {
+	struct bitmap *bm; 					//pointer to bitmap image
+	double xMin, xMax, yMin, yMax;     // coordinate range of mandelbrot
+	int maxIterations;				  // maximum iterations per pixel
+	int startRow, endRow;			 // rows that the thread will compute
+} ThreadData;
+
 int iteration_to_color( int i, int max );
 int iterations_at_point( double x, double y, int max );
 void compute_image( struct bitmap *bm, double xmin, double xmax, double ymin, double ymax, int max );
@@ -47,8 +55,8 @@ int main( int argc, char *argv[] )
 
 	// For each command line argument given,
 	// override the appropriate configuration value.
-
-	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:h"))!=-1) {
+	int numberOfThreads = 1; //defaulting the number of threads to 1
+	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:h:n:"))!=-1) {
 		switch(c) {
 			case 'x':
 				xcenter = atof(optarg);
@@ -74,6 +82,9 @@ int main( int argc, char *argv[] )
 			case 'h':
 				show_help();
 				exit(1);
+				break;
+			case 'n': //added case n so user can set the number of threads to use
+				numberOfThreads = atoi(optarg);
 				break;
 		}
 	}
@@ -106,6 +117,8 @@ Scale the image to the range (xmin-xmax,ymin-ymax), limiting iterations to "max"
 
 void compute_image( struct bitmap *bm, double xmin, double xmax, double ymin, double ymax, int max )
 {
+	ThreadData *data = (ThreadData *)arg; //getting the data assigned for thread
+	struct bitmap *bm = data->bm;
 	int i,j;
 
 	int width = bitmap_width(bm);
@@ -113,21 +126,22 @@ void compute_image( struct bitmap *bm, double xmin, double xmax, double ymin, do
 
 	// For every pixel in the image...
 
-	for(j=0;j<height;j++) {
+	for(j= data->startRow; j<data->endRow; j++) {
 
-		for(i=0;i<width;i++) {
+		for(i=0; i<width; i++) {
 
 			// Determine the point in x,y space for that pixel.
-			double x = xmin + i*(xmax-xmin)/width;
-			double y = ymin + j*(ymax-ymin)/height;
+			double x = data->xMin + i*(data->xMax - data->xMin) / width;
+			double y = data->yMin + j*(data->yMax - data->yMin)/height;
 
 			// Compute the iterations at that point.
-			int iters = iterations_at_point(x,y,max);
+			int iters = iterations_at_point(x,y,data->maxIterations);
 
 			// Set the pixel in the bitmap.
 			bitmap_set(bm,i,j,iters);
 		}
 	}
+	return NULL;
 }
 
 /*
